@@ -4,15 +4,102 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Iterator;
 
 public class Launcher extends MainActivity {
     private String mcPath;
+
+    private static boolean shouldLoadMaesdk() {
+        try {
+            String versionCode = getMinecraftVersion();
+            if (versionCode == null || versionCode.isEmpty()) {
+                return false;
+            }
+
+            if (versionCode.contains("beta")) {
+                return isVersionAtLeast(versionCode, "1.21.110.22");
+            } else {
+                return isVersionAtLeast(versionCode, "1.21.110");
+            }
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private static String getMinecraftVersion() {
+        try {
+            File dataDir = new File("/data/data/org.levimc.launcher");
+            File[] minecraftDirs = dataDir.listFiles((dir, name) -> name.startsWith("minecraft/"));
+            if (minecraftDirs != null) {
+                for (File minecraftDir : minecraftDirs) {
+                    File versionFile = new File(minecraftDir, "version.txt");
+                    if (versionFile.exists()) {
+                        return readFileToString(versionFile);
+                    }
+                }
+            }
+        } catch (Exception e) {
+            try {
+                File externalDir = new File(Environment.getExternalStorageDirectory(), "games/org.levimc/minecraft");
+                File[] versionDirs = externalDir.listFiles();
+                if (versionDirs != null) {
+                    for (File versionDir : versionDirs) {
+                        if (versionDir.isDirectory()) {
+                            File dataDir = new File("/data/data/org.levimc.launcher/minecraft/" + versionDir.getName());
+                            File versionFile = new File(dataDir, "version.txt");
+                            if (versionFile.exists()) {
+                                return readFileToString(versionFile);
+                            }
+                        }
+                    }
+                }
+            } catch (Exception ex) {
+                // Ignore
+            }
+        }
+        return null;
+    }
+
+    private static String readFileToString(File file) {
+        try (FileInputStream fis = new FileInputStream(file)) {
+            byte[] data = new byte[(int) file.length()];
+            fis.read(data);
+            return new String(data, StandardCharsets.UTF_8).trim();
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private static boolean isVersionAtLeast(String currentVersion, String targetVersion) {
+        try {
+            String[] current = currentVersion.replaceAll("[^0-9.]", "").split("\\.");
+            String[] target = targetVersion.split("\\.");
+
+            int maxLength = Math.max(current.length, target.length);
+
+            for (int i = 0; i < maxLength; i++) {
+                int currentPart = i < current.length ? Integer.parseInt(current[i]) : 0;
+                int targetPart = i < target.length ? Integer.parseInt(target[i]) : 0;
+
+                if (currentPart > targetPart) {
+                    return true;
+                } else if (currentPart < targetPart) {
+                    return false;
+                }
+            }
+
+            return true;
+        } catch (NumberFormatException e) {
+            return false;
+        }
+    }
 
     @Override
     public void onCreate(Bundle bundle) {
@@ -37,6 +124,9 @@ public class Launcher extends MainActivity {
     static {
         System.loadLibrary("c++_shared");
         System.loadLibrary("fmod");
+        if (shouldLoadMaesdk()) {
+            System.loadLibrary("maesdk");
+        }
         System.loadLibrary("minecraftpe");
         System.loadLibrary("preloader");
     }
